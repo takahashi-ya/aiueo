@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>body{margin:0}</style>
+<title>あいうえお ひょう</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&display=swap">
+<style>
+  /* Layout: 1ページ目は教科書のひらがな表（右から左へ あ行→わ行）。左右スワイプでジャンル別の単語カード（4×2）へ */
+  :root {
+    --paper: #fbf8f2;
+    --ink: #2a2522;
+    --rule: #e2b8ae;
+    --press: #e8553f;
+    --press-ink: #ffffff;
+    --muted: #8a7e78;
+    --font-kana: "Klee One", "UD デジタル 教科書体 N-R", "YuKyokasho", "Hiragino Maru Gothic ProN", "Noto Sans JP", sans-serif;
+    --font-emoji: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-kana);
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .app {
+    height: 100%;
+    box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 1.2vh;
+    padding-block: 1.2vh 1vh;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(18px, 4.2vh, 36px); font-weight: 600;
+    letter-spacing: .08em; line-height: 1.2;
+    color: var(--press);
+  }
+  h1.say { cursor: pointer; }
+  .head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-width: 0; }
+  .modes { display: flex; border-radius: 999px; box-shadow: inset 0 0 0 2px var(--rule); background: #fff; padding: 3px; gap: 2px; }
+  .mode {
+    appearance: none; border: 0; background: none; cursor: pointer; color: var(--ink);
+    font: inherit; font-weight: 600; font-size: clamp(13px, 2.4vh, 19px); line-height: 1.2;
+    padding: .4em 1em; border-radius: 999px; touch-action: manipulation;
+  }
+  .mode[aria-pressed="true"] { background: var(--press); color: var(--press-ink); }
+  .mode:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .tableview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .voices { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .voices .sep { width: 1px; align-self: stretch; background: var(--rule); margin-inline: 4px; }
+  .voice {
+    appearance: none; font: inherit; font-weight: 600;
+    font-size: clamp(12px, 2.3vh, 18px); line-height: 1.2;
+    padding: .45em .8em; border-radius: 999px;
+    border: 2px solid var(--rule); background: #fff; color: var(--ink);
+    cursor: pointer; touch-action: manipulation;
+  }
+  .voice[data-g="f"] { --vc: #e8553f; }
+  .voice[data-g="m"] { --vc: #2f6db5; }
+  .voice::before { content: ""; display: inline-block; width: .6em; height: .6em; border-radius: 50%; background: var(--vc); margin-right: .4em; vertical-align: .05em; }
+  .voice[aria-pressed="true"] { background: var(--vc); border-color: var(--vc); color: #fff; }
+  .voice[aria-pressed="true"]::before { background: #fff; }
+  .voice:focus-visible, .nav button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+  /* ---- ページ送り */
+  .viewport { flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
+  .track { display: flex; height: 100%; transition: transform .35s cubic-bezier(.2, .8, .2, 1); will-change: transform; }
+  .track.dragging { transition: none; }
+  .page { flex: 0 0 100%; height: 100%; display: flex; flex-direction: column; box-sizing: border-box; }
+
+  /* ---- あいうえお表 */
+  .grid {
+    flex: 1; min-height: 0;
+    container-type: size;
+    display: grid;
+    direction: rtl;
+    grid-template-columns: repeat(var(--cols, 10), 1fr);
+    grid-template-rows: repeat(var(--rows, 5), 1fr);
+    border-top: 2px solid var(--rule);
+    border-right: 2px solid var(--rule);
+  }
+  .cell {
+    direction: ltr;
+    appearance: none; margin: 0; padding: 0;
+    border: 0;
+    border-left: 2px solid var(--rule);
+    border-bottom: 2px solid var(--rule);
+    background: var(--tint, var(--paper));
+    color: var(--ink);
+    font: inherit; font-weight: 600;
+    font-size: 11vh;
+    font-size: var(--fs, min(8cqw, 15cqh));
+    white-space: nowrap;
+    line-height: 1;
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: background-color .25s ease;
+  }
+  .cell span { display: block; pointer-events: none; }
+  .cell.blank { cursor: default; }
+  .cell.split { border-left-width: 6px; }   /* あいうえお と てんてん の境目 */
+  /* となり案：てんてんの列は少し濃く見せる */
+  .cell.dk { background-image: linear-gradient(rgba(42, 37, 34, .045), rgba(42, 37, 34, .045)); }
+  /* なか案：マス全体が「か」、下に「が」の小さいボタン */
+  .cell.hasb { position: relative; padding: 0; display: block; }
+  .cell.hasb .main {
+    position: absolute; inset: 0; appearance: none; border: 0; margin: 0; padding: 0;
+    background: transparent; color: inherit; font: inherit; cursor: pointer;
+    display: grid; grid-template-rows: 62% 38%; justify-items: center; align-items: center;
+  }
+  .cell.hasb .main span { grid-row: 1; font-size: .82em; align-self: end; }
+  .cell.hasb .badges {
+    position: absolute; left: 6%; right: 6%; bottom: 6%; height: 36%;
+    display: flex; justify-content: flex-end; gap: 6%; pointer-events: none;
+  }
+  .cell .badge {
+    pointer-events: auto; appearance: none; margin: 0; padding: 0;
+    flex: 0 0 46%; height: 100%; border-radius: 10px;
+    border: 2px solid var(--rule); background: #fff; color: var(--ink);
+    font: inherit; font-size: .5em; line-height: 1; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .cell.hasb .main.on { background: var(--press); color: var(--press-ink); }
+  .cell .badge.on { background: var(--press); border-color: var(--press); color: var(--press-ink); animation: pop .45s cubic-bezier(.3, 1.6, .5, 1); }
+  .cell.hasb .main.on span { animation: pop .45s cubic-bezier(.3, 1.6, .5, 1); }
+  .cell:focus-visible, .card:focus-visible { outline: 4px solid var(--press); outline-offset: -6px; }
+
+  /* ---- 単語カード */
+  .words {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 4), 1fr);
+    grid-template-rows: repeat(var(--rows, 2), 1fr);
+    gap: 1.6vh;
+    padding: .4vh 2px;
+  }
+  .card {
+    appearance: none; margin: 0; padding: 0; border: 0;
+    border-radius: 18px;
+    background: var(--tint);
+    box-shadow: inset 0 0 0 2px rgba(42, 37, 34, .06), 0 2px 0 rgba(42, 37, 34, .08);
+    color: var(--ink);
+    font: inherit; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2vh; gap: 6cqh;
+    container-type: size;
+    min-width: 0; min-height: 0; overflow: hidden;
+    cursor: pointer;
+    transition: background-color .25s ease;
+  }
+  /* 大きさはカード自身の幅・高さに合わせる（枚数が少ないページほど大きく） */
+  .card .emoji {
+    font-family: var(--font-emoji); font-weight: 400;
+    font-size: 15vh; font-size: min(42cqh, 48cqw);
+    line-height: 1; pointer-events: none;
+  }
+  .card .swatch {
+    display: block; width: 15vh; height: 15vh; width: min(42cqh, 48cqw); height: min(42cqh, 48cqw);
+    border-radius: 50%; background: var(--swatch);
+    box-shadow: inset 0 0 0 3px rgba(42, 37, 34, .25);
+    pointer-events: none;
+  }
+  .card .label {
+    font-size: 6vh; font-size: min(17cqh, calc(84cqw / var(--n)));
+    line-height: 1.1; letter-spacing: .04em; white-space: nowrap; pointer-events: none;
+  }
+
+  /* 押したとき（表・カード共通） */
+  .cell.on, .card.on { background: var(--press); color: var(--press-ink); transition: none; }
+  .cell.on span, .card.on .emoji, .card.on .label { animation: pop .45s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+
+  /* ---- 下の帯：ページ送りとクレジット */
+  .bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+  .nav { display: flex; align-items: center; gap: 10px; }
+  .nav button {
+    appearance: none; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink);
+    touch-action: manipulation;
+  }
+  .nav .arrow {
+    width: 40px; height: 32px; border-radius: 999px; background: #fff;
+    box-shadow: inset 0 0 0 2px var(--rule);
+    font: 600 20px/32px system-ui, sans-serif;
+  }
+  .nav .arrow:disabled { opacity: .3; cursor: default; }
+  .dots { display: flex; gap: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--rule) !important; opacity: .5; }
+  .dot[aria-current="true"] { background: var(--press) !important; opacity: 1; width: 26px; border-radius: 6px; }
+  .credit { margin: 0; text-align: right; font-size: 11px; line-height: 1.3; color: var(--muted); font-family: system-ui, sans-serif; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cell.on span, .card.on .emoji, .card.on .label { animation: none; }
+    .track { transition: none; }
+  }
+</style>
+
+<div class="app">
+  <div class="top">
+    <div class="head">
+      <div class="modes" role="group" aria-label="きりかえ">
+        <button type="button" class="mode" data-mode="aiueo">あいうえお</button>
+        <button type="button" class="mode" data-mode="kotoba">ことば</button>
+      </div>
+      <div class="modes subs" id="subs" role="group" aria-label="ひょう"></div>
+      <h1 id="title">あいうえお ひょう</h1>
+    </div>
+    <div class="voices" id="voices" role="group" aria-label="こえ"></div>
+  </div>
+  <div class="tableview" id="tableview"></div>
+  <div class="viewport" id="viewport" hidden>
+    <div class="track" id="track"></div>
+  </div>
+  <div class="bottom">
+    <div class="nav" id="nav" aria-label="ページ">
+      <button type="button" class="arrow" id="prev" aria-label="まえのページ">‹</button>
+      <div class="dots" id="dots"></div>
+      <button type="button" class="arrow" id="next" aria-label="つぎのページ">›</button>
+    </div>
+    <p class="credit" id="credit"></p>
+  </div>
+</div>
+
+<script>
+const DATA = {"voices":[{"key":"tsumugi","name":"春日部つむぎ"},{"key":"himari","name":"冥鳴ひまり"},{"key":"takehiro","name":"玄野武宏"},{"key":"ryusei","name":"青山龍星"}]};
+const CATS = [];
+// 女性2人・男性2人
+const GENDER = { tsumugi: "f", himari: "f", takehiro: "m", ryusei: "m" };
+let voice = DATA.voices[0].key;
+try { const v = localStorage.getItem("aiueo-voice2"); if (v && GENDER[v]) voice = v; } catch (e) {}
+
+// 表の並べ方（ビルド時に決める）: "a" = 左に5列まとめて / "tonari" = か の左隣に が / "naka" = か のマスの中に が
+const LAYOUT = /*LAYOUT*/"naka";
+const SEI = [
+  ["あ","い","う","え","お"],
+  ["か","き","く","け","こ"],
+  ["さ","し","す","せ","そ"],
+  ["た","ち","つ","て","と"],
+  ["な","に","ぬ","ね","の"],
+  ["は","ひ","ふ","へ","ほ"],
+  ["ま","み","む","め","も"],
+  ["や","","ゆ","","よ"],
+  ["ら","り","る","れ","ろ"],
+  ["わ","","を","ー","ん"],
+];
+// てんてん・まる の列と、もとになる列の番号
+const DAKU = [
+  { base: 1, col: ["が","ぎ","ぐ","げ","ご"] },
+  { base: 2, col: ["ざ","じ","ず","ぜ","ぞ"] },
+  { base: 3, col: ["だ","ぢ","づ","で","ど"] },
+  { base: 5, col: ["ば","び","ぶ","べ","ぼ"] },
+  { base: 5, col: ["ぱ","ぴ","ぷ","ぺ","ぽ"] },
+];
+function seiTable() {
+  const t = { key: "daku", tab: "が", title: "てんてん・まる つき" };
+  if (LAYOUT === "naka") {
+    // 10列のまま。か・さ・た・は 行のマスの下に、が などの小さいボタンを入れる
+    t.fs = "min(7cqw, 11.5cqh)"; t.columns = SEI; t.badges = {};
+    DAKU.forEach(d => SEI[d.base].forEach((ch, r) => { (t.badges[ch] = t.badges[ch] || []).push(d.col[r]); }));
+  } else if (LAYOUT === "tonari") {
+    // か の左隣に が、は の左に ば・ぱ
+    t.fs = "min(5.4cqw, 15cqh)"; t.columns = []; t.tints = []; t.dk = [];
+    SEI.forEach((col, c) => {
+      t.columns.push(col); t.tints.push(c); t.dk.push(false);
+      DAKU.filter(d => d.base === c).forEach(d => { t.columns.push(d.col); t.tints.push(c); t.dk.push(true); });
+    });
+  } else {
+    // あいうえお（10列）の左に、てんてん・まる（5列）をまとめて並べる。split の列の左に太い線
+    t.fs = "min(5.4cqw, 15cqh)"; t.split = 10;
+    t.columns = SEI.concat(DAKU.map(d => d.col));
+    t.tints = [0,1,2,3,4,5,6,7,8,9].concat(DAKU.map(d => d.base));
+  }
+  return t;
+}
+// 表は3つ：てんてん なし／てんてん あり／小さい ゃゅょ。どれも右の列から順に並べる。空欄は ""。
+const TABLES = [
+  { key: "sei", tab: "あ", title: "あいうえお ひょう", fs: "min(8cqw, 15cqh)", columns: SEI },
+  seiTable(),
+  { key: "yoon", tab: "きゃ", title: "ちいさい ゃゅょ", fs: "min(3.9cqw, 22cqh)", columns:
+    ["き","し","ち","に","ひ","み","り","ぎ","じ","び","ぴ"].map(h => [h + "ゃ", h + "ゅ", h + "ょ"]) },
+];
+// 「ー」は直前の文字の母音をのばす。あいうえお・てんてんは段で、小さい ゃゅょ はその字で母音が決まる。
+const VOWEL_BY_ROW = ["あ","い","う","え","お"];
+const vowelOf = {};
+SEI.concat(DAKU.map(d => d.col)).forEach(col => col.forEach((ch, r) => { if (ch && ch !== "ー") vowelOf[ch] = VOWEL_BY_ROW[r]; }));
+TABLES[2].columns.forEach(col => col.forEach(ch => { vowelOf[ch] = { "ゃ": "あ", "ゅ": "う", "ょ": "お" }[ch.slice(-1)]; }));
+vowelOf["を"] = "お";
+vowelOf["ん"] = "ん";
+let lastVowel = null;
+function soundFor(ch) {
+  if (ch === "ー") return lastVowel || "_nobasu";   // 最初に押したときは「のばす」
+  lastVowel = vowelOf[ch];
+  return ch;
+}
+// 行ごとのやさしい色分け
+const TINTS = ["#fdeceb","#fdf1e1","#fbf5d9","#eaf5e1","#e1f3ef","#e2eefa","#ebe6f8","#f7e6f1","#f1ece4","#e9f1f4"];
+
+const tableview = document.getElementById("tableview");
+const grids = TABLES.map(t => {
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  grid.setAttribute("aria-label", t.title);
+  grid.style.setProperty("--cols", t.columns.length);
+  grid.style.setProperty("--rows", t.columns[0].length);
+  grid.style.setProperty("--fs", t.fs);
+  t.columns.forEach((col, c) => {
+    col.forEach((ch, r) => {
+      const badges = t.badges && t.badges[ch];
+      const el = document.createElement(ch && !badges ? "button" : "div");
+      el.className = "cell" + (ch ? "" : " blank") + (t.split && c === t.split - 1 ? " split" : "")
+        + (t.dk && t.dk[c] ? " dk" : "") + (badges ? " hasb" : "");
+      el.style.gridColumn = c + 1;
+      el.style.gridRow = r + 1;
+      el.style.setProperty("--tint", TINTS[t.tints ? t.tints[c] : c % TINTS.length]);
+      if (badges) {
+        // マス全体は「か」、下の小さいボタンは「が」（は のマスは ば・ぱ の2つ）
+        el.innerHTML = '<button type="button" class="main" data-ch="' + ch + '" aria-label="' + ch + '"><span>' + ch + '</span></button>'
+          + '<div class="badges">' + badges.map(b => '<button type="button" class="badge" data-ch="' + b + '" aria-label="' + b + '">' + b + '</button>').join("") + '</div>';
+      } else if (ch) {
+        el.type = "button";
+        el.dataset.ch = ch;
+        el.setAttribute("aria-label", ch);
+        el.innerHTML = "<span>" + ch + "</span>";
+      }
+      grid.appendChild(el);
+    });
+  });
+  tableview.appendChild(grid);
+  return grid;
+});
+
+// ---- 単語のページ
+const track = document.getElementById("track");
+const PAGES = [];
+CATS.forEach(cat => {
+  const page = document.createElement("section");
+  page.className = "page";
+  const box = document.createElement("div");
+  box.className = "words";
+  box.setAttribute("aria-label", cat.title);
+  // 枚数に合わせた並べ方：1〜4枚は横1列、5〜6枚は3×2、7〜8枚は4×2
+  const n = cat.words.length;
+  const cols = n <= 4 ? n : n <= 6 ? 3 : 4;
+  box.style.setProperty("--cols", cols);
+  box.style.setProperty("--rows", Math.ceil(n / cols));
+  cat.words.forEach(([word, emoji]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "card";
+    b.dataset.snd = "w:" + word;
+    b.setAttribute("aria-label", word);
+    b.style.setProperty("--tint", cat.tint);
+    b.style.setProperty("--n", Math.max(word.length, 4));
+    const pic = emoji.charAt(0) === "#"
+      ? '<span class="swatch" style="--swatch:' + emoji + '"></span>'   // 色のカード
+      : '<span class="emoji">' + emoji + '</span>';
+    b.innerHTML = pic + '<span class="label">' + word + '</span>';
+    box.appendChild(b);
+  });
+  page.appendChild(box);
+  track.appendChild(page);
+  PAGES.push({ title: cat.title, say: "t:" + cat.key });
+});
+
+// ---- 音声: Web Audio で即時再生（失敗したら <audio> にフォールバック）
+let ctx = null;
+try { const AC = window.AudioContext || window.webkitAudioContext; ctx = new AC(); } catch (e) { ctx = null; }
+const raw = {};       // raw[voice] = { key: base64 }
+const buffers = {};   // buffers[voice][key] = AudioBuffer
+const loading = {};
+const fallback = {};
+function b64ToBytes(b64) {
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
+// 声のデータは、ページ内に入っていればそれを使い、無ければ voices/<名前>.json を読み込む
+function loadVoice(v) {
+  if (loading[v]) return loading[v];
+  loading[v] = (DATA.audio && DATA.audio[v]
+      ? Promise.resolve(DATA.audio[v])
+      : fetch("voices/" + v + ".json").then(r => r.json()))
+    .then(map => {
+      raw[v] = map;
+      buffers[v] = {};
+      if (!ctx) return;
+      return Promise.all(Object.keys(map).map(k => new Promise(res => {
+        ctx.decodeAudioData(b64ToBytes(map[k]), buf => { buffers[v][k] = buf; res(); }, () => res());
+      })));
+    })
+    .catch(() => { delete loading[v]; });
+  return loading[v];
+}
+let current = null;
+function stopSound() {
+  try { if (current) current.stop ? current.stop() : current.pause(); } catch (e) {}
+  current = null;
+}
+function play(k) {
+  if (ctx && ctx.state === "suspended") ctx.resume();
+  stopSound();
+  const buf = ctx && buffers[voice] && buffers[voice][k];
+  if (buf) {
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    current = src;
+    return;
+  }
+  // フォールバック（Web Audio 非対応・デコード失敗のとき）
+  if (!raw[voice] || !raw[voice][k]) { loadVoice(voice); return; }
+  const id = voice + k;
+  let a = fallback[id];
+  if (!a) { a = new Audio("data:audio/wav;base64," + raw[voice][k]); fallback[id] = a; }
+  try { a.currentTime = 0; } catch (e) {}
+  a.play().catch(() => {});
+  current = a;
+}
+loadVoice(voice);
+
+// ---- こえの切り替え
+const voicesEl = document.getElementById("voices");
+DATA.voices.forEach((v, i) => {
+  if (i > 0 && GENDER[v.key] !== GENDER[DATA.voices[i - 1].key]) {
+    const s = document.createElement("span"); s.className = "sep"; voicesEl.appendChild(s);
+  }
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "voice"; b.dataset.v = v.key; b.dataset.g = GENDER[v.key];
+  b.textContent = v.name;
+  voicesEl.appendChild(b);
+});
+function setVoice(v) {
+  voice = v;
+  voicesEl.querySelectorAll(".voice").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === v ? "true" : "false"));
+  try { localStorage.setItem("aiueo-voice2", v); } catch (e) {}
+}
+setVoice(voice);
+voicesEl.addEventListener("click", e => {
+  const b = e.target.closest(".voice");
+  if (!b) return;
+  const v = b.dataset.v;
+  setVoice(v);
+  if (ctx && ctx.state === "suspended") ctx.resume();
+  loadVoice(v).then(() => { if (voice === v) play("_name"); });   // 選んだ人が自分の名前を言う
+});
+document.getElementById("credit").textContent =
+  "おんせい： " + DATA.voices.map(v => "VOICEVOX:" + v.name).join(" ／ ");
+
+function flash(el) {
+  el.classList.remove("on");
+  void el.offsetWidth;
+  el.classList.add("on");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("on"), 600);
+}
+
+// ---- 押したら鳴らす（pointerdown で即反応・複数指OK）
+function soundOf(el) {
+  return el.dataset.ch ? soundFor(el.dataset.ch) : el.dataset.snd;
+}
+const viewport = document.getElementById("viewport");
+[tableview, viewport].forEach(area => {
+  area.addEventListener("pointerdown", e => {
+    const el = e.target.closest("[data-ch], .card");
+    if (!el) return;
+    play(soundOf(el));
+    flash(el);
+  });
+  // キーボード操作用（Enter / Space）
+  area.addEventListener("click", e => {
+    if (e.detail !== 0) return;
+    const el = e.target.closest("[data-ch], .card");
+    if (el) { play(soundOf(el)); flash(el); }
+  });
+});
+
+// ---- ページ送り（スワイプ・矢印・点）
+const titleEl = document.getElementById("title");
+const dotsEl = document.getElementById("dots");
+const prevBtn = document.getElementById("prev");
+const nextBtn = document.getElementById("next");
+let page = 0;
+PAGES.forEach((p, i) => {
+  const d = document.createElement("button");
+  d.type = "button"; d.className = "dot";
+  d.setAttribute("aria-label", p.title);
+  d.addEventListener("click", () => goTo(i));
+  dotsEl.appendChild(d);
+});
+function goTo(i) {
+  const changed = i !== page;
+  page = Math.max(0, Math.min(PAGES.length - 1, i));
+  track.style.transform = "translateX(" + (-100 * page) + "%)";
+  if (mode === "kotoba") {
+    titleEl.textContent = PAGES[page].title;
+    titleEl.classList.add("say");
+  }
+  prevBtn.disabled = page === 0;
+  nextBtn.disabled = page === PAGES.length - 1;
+  dotsEl.querySelectorAll(".dot").forEach((d, k) => d.setAttribute("aria-current", k === page ? "true" : "false"));
+  if (changed) stopSound();
+}
+prevBtn.addEventListener("click", () => goTo(page - 1));
+nextBtn.addEventListener("click", () => goTo(page + 1));
+titleEl.addEventListener("pointerdown", () => { if (mode === "kotoba") play(PAGES[page].say); });
+document.addEventListener("keydown", e => {
+  if (mode !== "kotoba") return;
+  if (e.key === "ArrowRight") goTo(page + 1);
+  if (e.key === "ArrowLeft") goTo(page - 1);
+});
+
+// ---- 「あいうえお」と「ことば」の切り替え（URL の #aiueo / #kotoba でも開ける）
+const navEl = document.getElementById("nav");
+const modeBtns = document.querySelectorAll(".mode[data-mode]");
+let mode = null;
+
+// あいうえお の中の「あ」「が」「きゃ」切り替え（表はスワイプでは変わらない）
+const subsEl = document.getElementById("subs");
+let table = 0;
+TABLES.forEach((t, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "mode"; b.dataset.t = i;
+  b.textContent = t.tab;
+  b.setAttribute("aria-label", t.title);
+  b.addEventListener("click", () => {
+    if (i !== table) stopSound();
+    showTable(i);
+    play(t.tab);   // ボタンの字を読む（「あ」「が」「きゃ」）
+  });
+  subsEl.appendChild(b);
+});
+function showTable(i) {
+  table = i;
+  grids.forEach((g, k) => { g.hidden = k !== i; });
+  subsEl.querySelectorAll(".mode").forEach((b, k) => b.setAttribute("aria-pressed", k === i ? "true" : "false"));
+  titleEl.textContent = TABLES[i].title;
+  titleEl.classList.remove("say");
+}
+function setMode(m, fromHash) {
+  if (m !== "kotoba" || !CATS.length) m = "aiueo";   // ことばのページが無いときは常に あいうえお
+  const changed = m !== mode;
+  mode = m;
+  tableview.hidden = m !== "aiueo";
+  viewport.hidden = m !== "kotoba";
+  if (navEl.isConnected) navEl.style.visibility = m === "kotoba" ? "visible" : "hidden";
+  modeBtns.forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === m ? "true" : "false"));
+  subsEl.hidden = m !== "aiueo";
+  titleEl.hidden = m === "aiueo";   // 表のときは「あ／が／きゃ」ボタンで分かるので題名は出さない（1行に収める）
+  if (m === "aiueo") showTable(table);
+  goTo(page);
+  if (changed) stopSound();
+  if (!fromHash && location.hash !== "#" + m) {
+    try { history.replaceState(null, "", "#" + m); } catch (e) { location.hash = m; }
+  }
+}
+modeBtns.forEach(b => b.addEventListener("click", () => {
+  const m = b.dataset.mode;
+  if (m === mode) return;
+  setMode(m);
+  play("m:" + m);   // 「あいうえお」「ことば」と言う
+}));
+// ことばのページが無いときは「あいうえお／ことば」の切り替えと、ページ送りを出さない
+if (!CATS.length) {
+  document.querySelector(".modes:not(.subs)").remove();
+  navEl.remove();
+}
+window.addEventListener("hashchange", () => setMode(location.hash.slice(1), true));
+setMode(location.hash.slice(1), true);
+
+// スワイプ：指に合わせて動き、横に大きく動かしたらページを変える
+let drag = null;
+viewport.addEventListener("pointerdown", e => {
+  if (drag) return;   // 2本目の指は無視
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, horiz: false };
+  try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+});
+viewport.addEventListener("pointermove", e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.horiz && Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.3) drag.horiz = true;
+  if (!drag.horiz) return;
+  let d = dx;
+  if ((page === 0 && d > 0) || (page === PAGES.length - 1 && d < 0)) d = d / 4;   // 端では少しだけ動く
+  drag.dx = dx;
+  track.classList.add("dragging");
+  track.style.transform = "translateX(calc(" + (-100 * page) + "% + " + d + "px))";
+});
+function endDrag(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  track.classList.remove("dragging");
+  const w = viewport.clientWidth;
+  if (drag.horiz && Math.abs(drag.dx) > Math.min(140, w * 0.18)) goTo(page + (drag.dx < 0 ? 1 : -1));
+  else goTo(page);
+  drag = null;
+}
+viewport.addEventListener("pointerup", endDrag);
+viewport.addEventListener("pointercancel", endDrag);
+
+// 長押しメニュー・ダブルタップ拡大を防ぐ
+document.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("dblclick", e => e.preventDefault());
+document.addEventListener("gesturestart", e => e.preventDefault());
+
+// 画面が消えないように（使えない端末では無視）
+async function keepAwake() {
+  try { if (navigator.wakeLock) await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("pointerdown", keepAwake, { once: true });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+</script>
